@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import MusicSelector from './MusicSelector';
-import { Image, Song } from '@/types';
+import type { Image, Song } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Video, Film, Download, Loader2, Zap, Share2 } from 'lucide-react';
 
