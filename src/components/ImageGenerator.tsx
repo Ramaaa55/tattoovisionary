@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +38,15 @@ const ImageGenerator = ({ onSelectImages }: ImageGeneratorProps) => {
       // Add a cache buster to force a new image
       const timestampedUrl = `${imageUrl}?seed=${Date.now()}`;
       
+      // Process the image to remove watermark
+      // We'll apply a cropping technique by loading the image first
+      const processedImageUrl = await processImage(timestampedUrl);
+      
       // Simulate loading delay (in a real app, the API would have its own processing time)
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const newImage: Image = {
-        url: timestampedUrl,
+        url: processedImageUrl,
         prompt: prompt,
         timestamp: Date.now()
       };
@@ -65,6 +68,43 @@ const ImageGenerator = ({ onSelectImages }: ImageGeneratorProps) => {
     } finally {
       setGenerating(false);
     }
+  };
+
+  // Process image to remove watermark by cropping the bottom part
+  const processImage = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        
+        // Calculate dimensions that crop out the bottom watermark
+        // Crop 10% from the bottom where the watermark typically appears
+        const cropHeight = img.height * 0.9;
+        
+        canvas.width = img.width;
+        canvas.height = cropHeight;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        // Draw only the top 90% of the image, cutting off the bottom with the watermark
+        ctx.drawImage(img, 0, 0, img.width, cropHeight, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to data URL
+        const dataUrl = canvas.toDataURL('image/png');
+        resolve(dataUrl);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = imageUrl;
+    });
   };
 
   // Toggle image selection
