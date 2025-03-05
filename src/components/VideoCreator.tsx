@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import MusicSelector from './MusicSelector';
 import { Image, Song } from '@/types';
-import { useToast } from "@/components/ui/use-toast";
-import { Video, Film, Download, Loader2 } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+import { Video, Film, Download, Loader2, Zap, Share2 } from 'lucide-react';
 
 interface VideoCreatorProps {
   selectedImages: Image[];
@@ -13,6 +13,7 @@ interface VideoCreatorProps {
 
 const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [duration, setDuration] = useState<number>(3);
   const [isCreating, setIsCreating] = useState(false);
@@ -24,8 +25,7 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
     setVideoUrl(null);
   }, [selectedImages]);
 
-  // In a real application, this would generate a real video
-  // For now, we'll simulate video creation
+  // Create video from images using HTML Canvas
   const createVideo = async () => {
     if (selectedImages.length === 0) {
       toast({
@@ -40,38 +40,213 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
     setVideoUrl(null);
 
     try {
-      // This is a simulation - in a real app, you would:
-      // 1. Send the selected images to a backend service for processing
-      // 2. The backend would create a video with transitions between images
-      // 3. If a song was selected, it would be added to the video
-      // 4. The backend would return a URL to the created video
-      
-      // Simulate processing time based on number of images and duration
-      const processingTime = 1000 + (selectedImages.length * 500);
-      await new Promise(resolve => setTimeout(resolve, processingTime));
-      
-      // For demonstration, we'll just use the first image as a "video preview"
-      const previewImage = selectedImages[0]?.url || '';
-      
-      setVideoUrl(previewImage);
-      
-      toast({
-        title: "Video created!",
-        description: "Your video is ready to download",
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Set canvas dimensions
+      canvas.width = 1080;
+      canvas.height = 1920;
+
+      // Load all images first
+      const loadedImages = await Promise.all(
+        selectedImages.map((image) => {
+          return new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.onerror = (e) => reject(e);
+            img.src = image.url;
+          });
+        })
+      );
+
+      // Create a MediaRecorder to capture canvas frames
+      const stream = canvas.captureStream(30);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9'
       });
+
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        setVideoUrl(url);
+        
+        if (previewVideoRef.current) {
+          previewVideoRef.current.src = url;
+          previewVideoRef.current.play().catch(console.error);
+        }
+        
+        setIsCreating(false);
+        
+        toast({
+          title: "Video created!",
+          description: "Your video is ready to download",
+        });
+      };
+
+      mediaRecorder.start();
+      
+      // Animation timing variables
+      const frameDuration = 1000 / 30; // 30fps
+      const imageDuration = duration * 1000 / loadedImages.length;
+      const totalDuration = duration * 1000 + 3000; // Add 3 seconds for CTA
+      let startTime: number;
+      
+      // Font sizes based on canvas dimensions
+      const titleFontSize = Math.round(canvas.height * 0.05);
+      const ctaFontSize = Math.round(canvas.height * 0.06);
+      
+      // Animation function
+      const animate = async (timestamp: number) => {
+        if (!startTime) startTime = timestamp;
+        const elapsed = timestamp - startTime;
+        
+        if (elapsed > totalDuration) {
+          mediaRecorder.stop();
+          return;
+        }
+        
+        // Clear canvas
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        if (elapsed < duration * 1000) {
+          // Image slideshow part
+          const currentImageIndex = Math.min(
+            Math.floor(elapsed / imageDuration),
+            loadedImages.length - 1
+          );
+          
+          const img = loadedImages[currentImageIndex];
+          
+          // Draw image fitted to canvas maintaining aspect ratio
+          const scale = Math.max(
+            canvas.width / img.width,
+            canvas.height / img.height
+          );
+          
+          const scaledWidth = img.width * scale;
+          const scaledHeight = img.height * scale;
+          const offsetX = (canvas.width - scaledWidth) / 2;
+          const offsetY = (canvas.height - scaledHeight) / 2;
+          
+          ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+          
+          // Add fade transition between images
+          const fadeProgress = (elapsed % imageDuration) / imageDuration;
+          if (fadeProgress > 0.8 && currentImageIndex < loadedImages.length - 1) {
+            const nextImg = loadedImages[currentImageIndex + 1];
+            const fadeAlpha = (fadeProgress - 0.8) * 5; // 0 to 1 in the last 20% of the time
+            
+            ctx.globalAlpha = fadeAlpha;
+            const nextScale = Math.max(
+              canvas.width / nextImg.width,
+              canvas.height / nextImg.height
+            );
+            
+            const nextScaledWidth = nextImg.width * nextScale;
+            const nextScaledHeight = nextImg.height * nextScale;
+            const nextOffsetX = (canvas.width - nextScaledWidth) / 2;
+            const nextOffsetY = (canvas.height - nextScaledHeight) / 2;
+            
+            ctx.drawImage(nextImg, nextOffsetX, nextOffsetY, nextScaledWidth, nextScaledHeight);
+            ctx.globalAlpha = 1;
+          }
+        } else {
+          // CTA part - last 3 seconds
+          const ctaElapsed = elapsed - (duration * 1000);
+          const ctaProgress = ctaElapsed / 3000; // 0 to 1 over 3 seconds
+          
+          // Background pulse effect
+          const pulseValue = Math.sin(ctaProgress * Math.PI * 5) * 0.2 + 0.8;
+          ctx.fillStyle = `rgba(0, 0, 0, ${pulseValue})`;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Gradient background
+          const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          gradient.addColorStop(0, '#6d28d9');
+          gradient.addColorStop(1, '#9333ea');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw attention-grabbing CTA text with animation
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // Title with scale animation
+          const titleScale = 1 + Math.sin(ctaProgress * Math.PI * 2) * 0.1;
+          ctx.font = `bold ${titleFontSize * titleScale}px sans-serif`;
+          ctx.fillStyle = 'white';
+          ctx.fillText('Get Your Tattoo Today!', canvas.width / 2, canvas.height * 0.4);
+          
+          // CTA with highlight animation
+          ctx.font = `bold ${ctaFontSize}px sans-serif`;
+          const ctaY = canvas.height * 0.6;
+          
+          // Animated underline
+          const underlineWidth = canvas.width * 0.6 * Math.min(ctaProgress * 2, 1);
+          ctx.fillStyle = '#f97316';
+          ctx.fillRect(
+            (canvas.width - underlineWidth) / 2,
+            ctaY + ctaFontSize * 0.7,
+            underlineWidth,
+            10
+          );
+          
+          // CTA text
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('Tap to Create Your Design', canvas.width / 2, ctaY);
+          
+          // Draw icon
+          const iconSize = ctaFontSize * 2;
+          const iconY = canvas.height * 0.75;
+          ctx.beginPath();
+          ctx.arc(canvas.width / 2, iconY, iconSize, 0, Math.PI * 2);
+          ctx.fillStyle = '#f97316';
+          ctx.fill();
+          
+          // Draw lightning bolt icon
+          ctx.beginPath();
+          const boltWidth = iconSize * 0.6;
+          const boltHeight = iconSize;
+          // Drawing simplified bolt shape
+          ctx.moveTo(canvas.width / 2 - boltWidth * 0.3, iconY - boltHeight * 0.4);
+          ctx.lineTo(canvas.width / 2 + boltWidth * 0.1, iconY - boltHeight * 0.1);
+          ctx.lineTo(canvas.width / 2 - boltWidth * 0.1, iconY);
+          ctx.lineTo(canvas.width / 2 + boltWidth * 0.3, iconY + boltHeight * 0.4);
+          ctx.lineTo(canvas.width / 2, iconY);
+          ctx.lineTo(canvas.width / 2 - boltWidth * 0.2, iconY - boltHeight * 0.2);
+          ctx.closePath();
+          ctx.fillStyle = 'white';
+          ctx.fill();
+        }
+        
+        requestAnimationFrame(animate);
+      };
+      
+      requestAnimationFrame(animate);
     } catch (error) {
+      console.error("Error creating video:", error);
       toast({
         title: "Video creation failed",
         description: "There was an error creating your video",
         variant: "destructive"
       });
-      console.error("Error creating video:", error);
-    } finally {
       setIsCreating(false);
     }
   };
 
-  // Download the video (simulated)
+  // Download the video
   const downloadVideo = () => {
     if (!videoUrl) return;
     
@@ -80,11 +255,10 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
       description: "Your video is being downloaded",
     });
     
-    // In a real application, this would download the actual video file
-    // For now, we'll just download the image as a simulation
+    // Download the video file
     const link = document.createElement('a');
     link.href = videoUrl;
-    link.download = `tattoo-video-${Date.now()}.mp4`;
+    link.download = `tattoo-video-${Date.now()}.webm`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,7 +287,7 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="font-medium text-sm">
-                    Duration: {duration} seconds
+                    Duration: {duration} seconds (plus 3-second CTA)
                   </label>
                   <Slider
                     value={[duration]}
@@ -181,16 +355,13 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
             <div className="flex-1 bg-muted rounded-xl overflow-hidden flex items-center justify-center">
               {videoUrl ? (
                 <div className="relative w-full h-full">
-                  <img 
+                  <video 
+                    ref={previewVideoRef}
                     src={videoUrl} 
-                    alt="Video preview" 
+                    controls
                     className="w-full h-full object-contain"
+                    loop
                   />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-black/50 text-white px-4 py-2 rounded-md">
-                      Video Preview (Simulation)
-                    </div>
-                  </div>
                 </div>
               ) : (
                 <div className="text-center px-4">
@@ -205,14 +376,35 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
             </div>
             
             {videoUrl && (
-              <Button
-                onClick={downloadVideo}
-                className="mt-4 rounded-full hover-scale"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Download Video
-              </Button>
+              <div className="flex gap-3 mt-4">
+                <Button
+                  onClick={downloadVideo}
+                  className="flex-1 rounded-full hover-scale"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Video
+                </Button>
+                <Button
+                  variant="outline"
+                  className="rounded-full hover-scale"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    toast({
+                      title: "Share link copied",
+                      description: "Link to this page has been copied to clipboard",
+                    });
+                  }}
+                >
+                  <Share2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
+
+            {/* Hidden canvas for video generation */}
+            <canvas 
+              ref={canvasRef} 
+              className="hidden"
+            />
           </div>
         </div>
       </div>

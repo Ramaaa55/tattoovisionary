@@ -17,4 +17,6 @@ export interface Video {
   images: Image[];
   song?: Song;
   duration: number;
+  url: string;
+  createdAt: number;
 }

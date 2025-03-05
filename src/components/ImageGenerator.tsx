@@ -2,15 +2,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Image as ImageIcon, RefreshCw, Download, Check } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { Loader2, Image as ImageIcon, RefreshCw, Download, Check, Video } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Image } from '@/types';
 
-const ImageGenerator = () => {
+interface ImageGeneratorProps {
+  onSelectImages?: (images: Image[]) => void;
+}
+
+const ImageGenerator = ({ onSelectImages }: ImageGeneratorProps) => {
   const [prompt, setPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [images, setImages] = useState<Image[]>([]);
-  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -63,13 +67,21 @@ const ImageGenerator = () => {
     }
   };
 
-  // Toggle image selection for video creation
-  const toggleImageSelection = (imageUrl: string) => {
-    setSelectedImages(prev => 
-      prev.includes(imageUrl)
-        ? prev.filter(url => url !== imageUrl)
-        : [...prev, imageUrl]
-    );
+  // Toggle image selection
+  const toggleImageSelection = (imageTimestamp: number) => {
+    setSelectedImageIds(prev => {
+      const timestampStr = imageTimestamp.toString();
+      if (prev.includes(timestampStr)) {
+        return prev.filter(id => id !== timestampStr);
+      } else {
+        return [...prev, timestampStr];
+      }
+    });
+  };
+
+  // Get selected images as objects
+  const getSelectedImages = (): Image[] => {
+    return images.filter(img => selectedImageIds.includes(img.timestamp.toString()));
   };
 
   // Download image
@@ -92,6 +104,23 @@ const ImageGenerator = () => {
         description: "There was an error downloading your image",
         variant: "destructive"
       });
+    }
+  };
+  
+  // Create video with selected images
+  const handleCreateVideo = () => {
+    if (selectedImageIds.length === 0) {
+      toast({
+        title: "No images selected",
+        description: "Please select at least one image to create a video",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const selectedImagesData = getSelectedImages();
+    if (onSelectImages) {
+      onSelectImages(selectedImagesData);
     }
   };
 
@@ -137,18 +166,18 @@ const ImageGenerator = () => {
         </div>
 
         <div ref={containerRef} className="relative">
-          {selectedImages.length > 0 && (
+          {selectedImageIds.length > 0 && (
             <div className="sticky top-20 z-20 bg-white/80 backdrop-blur-sm py-4 border-b">
               <div className="container">
                 <div className="flex items-center justify-between">
                   <p className="font-medium">
-                    {selectedImages.length} image{selectedImages.length > 1 ? 's' : ''} selected
+                    {selectedImageIds.length} image{selectedImageIds.length > 1 ? 's' : ''} selected
                   </p>
                   <div className="flex gap-3">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelectedImages([])}
+                      onClick={() => setSelectedImageIds([])}
                       className="rounded-full"
                     >
                       Clear
@@ -156,12 +185,9 @@ const ImageGenerator = () => {
                     <Button
                       size="sm"
                       className="rounded-full"
-                      onClick={() => {
-                        // This would typically navigate to the video creator
-                        // or pass the selected images to the video creator component
-                        document.getElementById('video-creator')?.scrollIntoView({ behavior: 'smooth' });
-                      }}
+                      onClick={handleCreateVideo}
                     >
+                      <Video className="mr-2 h-4 w-4" />
                       Create Video
                     </Button>
                   </div>
@@ -172,61 +198,65 @@ const ImageGenerator = () => {
 
           {images.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {images.map((image, index) => (
-                <div 
-                  key={image.timestamp} 
-                  className={`relative group rounded-2xl overflow-hidden border shadow-sm hover-scale cursor-pointer ${
-                    selectedImages.includes(image.url) ? 'ring-2 ring-primary' : ''
-                  }`}
-                  onClick={() => toggleImageSelection(image.url)}
-                >
-                  <div className="aspect-square relative overflow-hidden bg-muted">
-                    <img 
-                      src={image.url} 
-                      alt={image.prompt}
-                      className="w-full h-full object-cover transition-opacity duration-300"
-                      loading="lazy"
-                    />
-                    
-                    {/* Selection indicator */}
-                    {selectedImages.includes(image.url) && (
-                      <div className="absolute top-3 right-3 bg-primary text-white rounded-full p-1">
-                        <Check className="h-4 w-4" />
-                      </div>
-                    )}
-                    
-                    {/* Image overlay with actions */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      <div className="absolute bottom-0 left-0 right-0 p-4">
-                        <p className="text-white text-sm mb-3 line-clamp-2">{image.prompt}</p>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            variant="secondary"
-                            className="rounded-full"
-                            onClick={(e) => downloadImage(image.url, e)}
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            Save
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="secondary"
-                            className="rounded-full"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPrompt(image.prompt);
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4 mr-1" />
-                            Remix
-                          </Button>
+              {images.map((image) => {
+                const isSelected = selectedImageIds.includes(image.timestamp.toString());
+                return (
+                  <div 
+                    key={image.timestamp} 
+                    className={`relative group rounded-2xl overflow-hidden border shadow-sm hover-scale cursor-pointer ${
+                      isSelected ? 'ring-2 ring-primary' : ''
+                    }`}
+                    onClick={() => toggleImageSelection(image.timestamp)}
+                  >
+                    <div className="aspect-square relative overflow-hidden bg-muted">
+                      <img 
+                        src={image.url} 
+                        alt={image.prompt}
+                        className="w-full h-full object-cover transition-opacity duration-300"
+                        loading="lazy"
+                        crossOrigin="anonymous"
+                      />
+                      
+                      {/* Selection indicator */}
+                      {isSelected && (
+                        <div className="absolute top-3 right-3 bg-primary text-white rounded-full p-1">
+                          <Check className="h-4 w-4" />
+                        </div>
+                      )}
+                      
+                      {/* Image overlay with actions */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="absolute bottom-0 left-0 right-0 p-4">
+                          <p className="text-white text-sm mb-3 line-clamp-2">{image.prompt}</p>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="secondary"
+                              className="rounded-full"
+                              onClick={(e) => downloadImage(image.url, e)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Save
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="secondary"
+                              className="rounded-full"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPrompt(image.prompt);
+                              }}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-1" />
+                              Remix
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-16 bg-muted/30 rounded-2xl border border-dashed">

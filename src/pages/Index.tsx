@@ -21,35 +21,18 @@ const Index = () => {
     return () => clearTimeout(timer);
   }, []);
   
-  // Placeholder for the image selection logic
-  // In a real app, this would handle the selection of images from the image generator
-  useEffect(() => {
-    // This is a simulation - normally this would be connected
-    // to the actual image generator component
-    const handleSelectedImagesChange = (images: string[]) => {
-      // Convert the image URLs to Image objects
-      const imageObjects: Image[] = images.map(url => ({
-        url,
-        prompt: "Selected tattoo design",
-        timestamp: Date.now()
-      }));
-      
-      setSelectedImages(imageObjects);
-    };
+  // Set up a handler to receive selected images from the ImageGenerator
+  const handleImagesSelected = (images: Image[]) => {
+    setSelectedImages(images);
     
-    // Set up a global event or state management
-    // to connect the image generator and video creator
-    // This is simplified for the example
-    window.addEventListener('imagesSelected', (e: any) => {
-      handleSelectedImagesChange(e.detail);
-    });
-    
-    return () => {
-      window.removeEventListener('imagesSelected', (e: any) => {
-        handleSelectedImagesChange(e.detail);
+    // Scroll to video creator after selecting images
+    setTimeout(() => {
+      document.getElementById('video-creator')?.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'start'
       });
-    };
-  }, []);
+    }, 100);
+  };
   
   if (!isLoaded) {
     return (
@@ -66,7 +49,7 @@ const Index = () => {
       <Navbar />
       <main className="animate-blur-in">
         <Hero />
-        <ImageGenerator />
+        <ImageGenerator onSelectImages={handleImagesSelected} />
         <VideoCreator selectedImages={selectedImages} />
         <Features />
       </main>
