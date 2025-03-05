@@ -17,6 +17,7 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceOverRef = useRef<HTMLAudioElement | null>(null);
   
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [selectedBackgroundVideo, setSelectedBackgroundVideo] = useState<BackgroundVideo | null>(null);
@@ -35,6 +36,90 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
   useEffect(() => {
     setVideoUrl(null);
   }, [selectedImages]);
+
+  // Effect to handle song playback when preview is played
+  useEffect(() => {
+    if (!previewVideoRef.current) return;
+    
+    const videoElement = previewVideoRef.current;
+    
+    // Create handlers for audio sync with video
+    const handlePlay = () => {
+      if (selectedSong && audioRef.current) {
+        audioRef.current.play().catch(err => {
+          console.error("Error playing music:", err);
+        });
+      }
+      
+      // Also play voice over if available
+      if (voiceOverRef.current) {
+        voiceOverRef.current.play().catch(err => {
+          console.error("Error playing voice over:", err);
+        });
+      }
+    };
+    
+    const handlePause = () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      if (voiceOverRef.current) {
+        voiceOverRef.current.pause();
+      }
+    };
+    
+    const handleEnded = () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      
+      if (voiceOverRef.current) {
+        voiceOverRef.current.pause();
+        voiceOverRef.current.currentTime = 0;
+      }
+    };
+    
+    // Add event listeners
+    videoElement.addEventListener('play', handlePlay);
+    videoElement.addEventListener('pause', handlePause);
+    videoElement.addEventListener('ended', handleEnded);
+    
+    // Remove event listeners on cleanup
+    return () => {
+      videoElement.removeEventListener('play', handlePlay);
+      videoElement.removeEventListener('pause', handlePause);
+      videoElement.removeEventListener('ended', handleEnded);
+    };
+  }, [selectedSong, previewVideoRef.current]);
+
+  // Effect to handle changes in selected song
+  useEffect(() => {
+    // Clean up previous audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    
+    if (!selectedSong) return;
+    
+    // Create new audio element for the selected song
+    const audio = new Audio(selectedSong.url);
+    audio.loop = true;
+    audio.volume = 0.3; // Set volume to 30%
+    audioRef.current = audio;
+    
+    // If the video is already playing, start the music
+    if (previewVideoRef.current && !previewVideoRef.current.paused) {
+      audio.play().catch(console.error);
+    }
+    
+    return () => {
+      audio.pause();
+      audio.src = '';
+    };
+  }, [selectedSong]);
 
   // Create video from images using HTML Canvas
   const createVideo = async () => {
@@ -120,21 +205,23 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
         if (previewVideoRef.current) {
           previewVideoRef.current.src = url;
           
-          // Add audio to preview if a song was selected
+          // Setup audio for preview
           if (selectedSong) {
+            // Create new audio for playback
             const audio = new Audio(selectedSong.url);
             audio.loop = true;
+            audio.volume = 0.3;
             audioRef.current = audio;
-            
-            // When video starts playing, play the audio
-            previewVideoRef.current.onplay = () => {
-              audio.play().catch(console.error);
-            };
-            
-            // When video pauses, pause the audio
-            previewVideoRef.current.onpause = () => {
-              audio.pause();
-            };
+          }
+          
+          // Setup voice over for preview if we had voice script
+          if (selectedVoice && voiceScript.trim()) {
+            // In a real app, this would use a text-to-speech API with selectedVoice
+            // For now, we'll simulate it with a dummy audio
+            const voiceAudio = new Audio("https://assets.mixkit.co/music/preview/mixkit-announcement-music-bed-001-608.mp3");
+            voiceAudio.loop = false;
+            voiceAudio.volume = 0.7;
+            voiceOverRef.current = voiceAudio;
           }
           
           previewVideoRef.current.play().catch(console.error);
