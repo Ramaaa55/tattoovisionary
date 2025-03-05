@@ -472,7 +472,7 @@ const VideoCreator = ({ selectedImages = [] }: VideoCreatorProps) => {
             <div className="flex gap-3 pt-2">
               <Button
                 onClick={createVideo}
-                disabled={isCreating || ((activeTab === "images" && selectedImages.length === 0) && (activeTab === "video" && !selectedBackgroundVideo))}
+                disabled={isCreating || ((activeTab === "images" && selectedImages.length === 0) || (activeTab === "video" && !selectedBackgroundVideo))}
                 className="w-full rounded-full hover-scale"
               >
                 {isCreating ? (
