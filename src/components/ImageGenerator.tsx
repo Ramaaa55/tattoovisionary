@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Image as ImageIcon, RefreshCw, Download, Check, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Image } from '@/types';
+import type { Image } from '@/types';
 
 interface ImageGeneratorProps {
   onSelectImages?: (images: Image[]) => void;
