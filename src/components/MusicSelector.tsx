@@ -26,7 +26,7 @@ const TRENDING_SONGS: Song[] = [
   },
   {
     id: '4',
-    title: 'Texas Hold 'Em',
+    title: 'Texas Hold Em',
     artist: 'Beyoncé',
     url: 'https://example.com/audio4.mp3'
   },
